@@ -1,201 +1,65 @@
-import streamlit as st
-import torch
-import clip
-from PIL import Image
-from ultralytics import YOLO
 import numpy as np
+import pandas as pd
+import streamlit as st
+import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
 
-# ---- Set up UI Layout (MUST BE FIRST STREAMLIT COMMAND) ----
-st.set_page_config(
-    page_title="Formal vs Informal Classifier",
-    page_icon="👔",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+# Load dataset (assuming housing_data is a DataFrame with relevant columns)
+housing_data = pd.read_csv('housing.csv')
+# Convert categorical variables to numeric values
+housing_data['mainroad'] = housing_data['mainroad'].map({'yes': 1, 'no': 0})
+housing_data['guestroom'] = housing_data['guestroom'].map({'yes': 1, 'no': 0})
+housing_data['basement'] = housing_data['basement'].map({'yes': 1, 'no': 0})
+housing_data['hotwaterheating'] = housing_data['hotwaterheating'].map({'yes': 1, 'no': 0})
+housing_data['airconditioning'] = housing_data['airconditioning'].map({'yes': 1, 'no': 0})
+housing_data['prefarea'] = housing_data['prefarea'].map({'yes': 1, 'no': 0})
+housing_data['furnishingstatus'] = housing_data['furnishingstatus'].map({'unfurnished': 0, 'semi-furnished': 1, 'furnished': 2})
 
-# ---- Sidebar Navigation ----
-st.sidebar.title("📌 Navigation")
-page = st.sidebar.radio("Go to:", ["🏠 Home", "📸 Classify Image", "ℹ️ About"])
+X = housing_data[['area', 'bedrooms', 'bathrooms', 'stories', 'mainroad', 'guestroom', 'basement', 'hotwaterheating', 'airconditioning', 'parking', 'prefarea', 'furnishingstatus']].values  # Multiple features
+y = housing_data['price'].values  # Target variable
 
-# ---- Dark Mode Toggle ----
-theme = st.sidebar.radio("🎨 Theme:", ["🌞 Light Mode", "🌙 Dark Mode"])
+# Split data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Apply dark mode styles if selected
-if theme == "🌙 Dark Mode":
-    st.markdown(
-        """
-        <style>
-        body { background-color: #1E1E1E; color: #ffffff; }
-        .stTextInput>div>div>input { background-color: #333; color: white; }
-        .stButton>button { background-color: #666; color: white; border: 1px solid white; }
-        .stFileUploader>div>div>button { background-color: #666; color: white; }
-        .stSidebar>div { background-color: #333; color: white; }
-        .stSelectbox>div>div>div>div>input { background-color: #333; color: white; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+# Train the model
+model = LinearRegression()
+model.fit(X_train, y_train)
 
-# ---- Load CLIP Model ----
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model, preprocess = clip.load("ViT-B/32", device=device)
+# Streamlit UI
+st.title("House Price Prediction App")
+st.write("Enter house details to predict the price.")
 
-# ---- Footer Function ----
-def add_footer():
-    st.markdown("""
-        <hr style="border:1px solid gray">
-        <p style="text-align:center;">
-            Made with ❤️ using Streamlit & OpenAI CLIP | 
-            <a href="https://github.com/adityasysnet" target="_blank">GitHub</a>
-        </p>
-    """, unsafe_allow_html=True)
+# User Inputs
+area = st.number_input("Enter the area (sq ft)", min_value=100, max_value=10000, value=1500)
+bedrooms = st.number_input("Enter the number of bedrooms", min_value=1, max_value=10, value=3)
+bathrooms = st.number_input("Enter the number of bathrooms", min_value=1, max_value=5, value=2)
+stories = st.number_input("Enter the number of stories", min_value=1, max_value=5, value=1)
+mainroad = st.radio("Is it on the main road?", [1, 0], format_func=lambda x: "Yes" if x == 1 else "No")
+guestroom = st.radio("Does it have a guestroom?", [1, 0], format_func=lambda x: "Yes" if x == 1 else "No")
+basement = st.radio("Does it have a basement?", [1, 0], format_func=lambda x: "Yes" if x == 1 else "No")
+hotwaterheating = st.radio("Does it have hot water heating?", [1, 0], format_func=lambda x: "Yes" if x == 1 else "No")
+airconditioning = st.radio("Does it have air conditioning?", [1, 0], format_func=lambda x: "Yes" if x == 1 else "No")
+parking = st.number_input("Number of parking spaces", min_value=0, max_value=5, value=1)
+prefarea = st.radio("Is it in a preferred area?", [1, 0], format_func=lambda x: "Yes" if x == 1 else "No")
+furnishingstatus = st.radio("Furnishing status", [0, 1, 2], format_func=lambda x: ['Unfurnished', 'Semi-furnished', 'Furnished'][x])
 
-# ---- Page Handling ----
-if page == "🏠 Home":
-    st.title("👔 Formal vs Informal Attire Classifier")
-    st.write("""
-        Welcome to the **AI-Powered Attire Classifier**!  
-        📸 Upload or capture an image, and the model will classify it as **Formal** or **Informal**.
-        
-        - Uses **OpenAI CLIP** for classification  
-        - Works on **both desktop & mobile**  
-        - Supports **live camera capture**  
-        
-        **🔍 Get Started:** Click on **"📸 Classify Image"** in the sidebar!
-    """)
+pred_price = None  # Initialize pred_price
 
-elif page == "📸 Classify Image":
-    st.title("📸 Classify Image")
-    st.write("Upload an image or take a picture, and I'll classify it!")
+# Predict Button
+if st.button("Predict Price"):
+    user_input = np.array([[area, bedrooms, bathrooms, stories, mainroad, guestroom, basement, hotwaterheating, airconditioning, parking, prefarea, furnishingstatus]])
+    pred_price = model.predict(user_input)
+    st.success(f"Predicted price: ${pred_price[0]:,.2f}")
 
-    # Choose input method
-    option = st.radio("Choose Image Input Method:", ["📸 Camera", "📤 Upload Image"])
-
-    # Image input handling
-    uploaded_image = None
-    IMAGE_SIZE = (500,500)
-    if option == "📸 Camera":
-        uploaded_image = st.camera_input("Take a picture")
-    else:
-        uploaded_image = st.file_uploader("Upload an image", type=["jpg", "png", "jpeg"])
-
-    if uploaded_image is not None:
-        # Display the uploaded/captured image
-        image = Image.open(uploaded_image).convert("RGB")
-        resized_image = image.resize(IMAGE_SIZE)
-        st.image(resized_image, caption="📷 Input Image", use_column_width=True)
-
-        # Preprocess the image
-        image_input = preprocess(resized_image).unsqueeze(0).to(device)
-
-        # Define text labels
-        # text_labels = ["Formal attire", "Informal attire"]
-        text_labels = [
-    "Suit Formal",
-    "Dress Shirt Formal",
-    "Shirt Formal",
-    "Collar Shirt Formal",
-    "check shirt Formal",
-    "half-sleeve shirts Formal",
-    "Tie Formal",
-    "Bow Tie Formal",
-    "Dress Pants Formal",
-    "Blazer Formal",
-    "Waistcoat Formal",
-    "Dress Shoes Formal",
-    "Cufflinks Formal",
-    "Pocket Square Formal",
-    "Formal Belt Formal",
-    "Business Suit Formal",
-    "Formal Dress Formal",
-    "Cocktail Dress Formal",
-    "Gown Formal",
-    "Blouse Formal",
-    "Pencil Skirt Formal",
-    "High Heels Formal",
-    "Stockings Formal",
-    "Jewelry Formal",
-    "Handbag Formal",
-
-
-    "T-Shirts Informal",
-    "Jeans Informal",
-    "Hoodies Informal",
-    "Sweatpants Informal",
-    "Sneakers Informal",
-    "Cargo Pants Informal",
-    "Polo Shirts Informal",
-    "Flannel Shirts Informal",
-    "Denim Jackets Informal",
-    "Shorts Informal",
-    "Joggers Informal",
-    "Tank Tops Informal",
-    "Baseball Caps Informal",
-    "Graphic Tees Informal",
-    "Oversized Hoodies Informal",
-    "Leggings Informal",
-    "Yoga Pants Informal",
-    "Sportswear Informal",
-    "Tracksuits Informal",
-    "Gym Clothes Informal",
-
-    "NOT A HUMAN, cat, dog, computer, phone, car, tree", 
-    "house, table, chair, sofa, bed, window",
-    "door, book, cup, plate, fork, knife",
-    "spoon, bowl, banana, apple",
-    "sandwich, orange, broccoli, carrot",
-    "hot dog, pizza, donut, cake, chair",
-    "couch, potted plant, bed, dining table",
-    "toilet, TV, laptop, mouse, remote, keyboard",
-    "cell phone, microwave, oven, toaster, sink",
-    "refrigerator, blender, book, clock",
-    "vase, scissors, teddy bear",
-    "hair dryer, toothbrush, etc.",
-]
-
-        text_inputs = clip.tokenize(text_labels).to(device)
-
-        # Perform classification
-        with st.spinner("🌀 Analyzing image..."):
-            with torch.no_grad():
-                # Get image and text features
-                image_features = model.encode_image(image_input)
-                text_features = model.encode_text(text_inputs)
-
-                # Compute similarity between image and text
-                image_features /= image_features.norm(dim=-1, keepdim=True)
-                text_features /= text_features.norm(dim=-1, keepdim=True)
-                similarity = (image_features @ text_features.T).squeeze(0)
-
-                # Get the predicted label
-                predicted_label = text_labels[similarity.argmax().item()]
-
-        # Display the result
-        st.success(f"### 🏆 Prediction: **{predicted_label}**")
-        # Display confidence scores for both classes
-        st.write("### 🔍 Prediction Breakdown:")
-        for i, label in enumerate(text_labels):
-            st.write(f"- **{label}:** {similarity[i].item() * 100:.2f}%")
-
-
-elif page == "ℹ️ About":
-    st.title("ℹ️ About This App")
-    st.write("""
-        This application classifies images into **Formal** or **Informal Attire** using OpenAI's **CLIP model**.
-        
-        **Features:**
-        - 📸 Capture images from a camera
-        - 📤 Upload an image
-        - 🏆 AI-based classification with **CLIP**
-        - 🌐 Mobile-friendly UI
-        
-        **Developed by:** Aditya Sharma  
-        **GitHub:** [Click Here](https://github.com/adityasysnet)
-    """)
-
-    if st.button("🔄 Try Another Image"):
-        st.rerun()  # NEW (Correct)
-
-
-# ---- Footer ----
-add_footer()
+# Visualizing (only possible for one variable at a time, e.g., bedrooms vs price)
+st.subheader("Visualization")
+fig, ax = plt.subplots()
+ax.scatter(housing_data['bedrooms'], housing_data['price'], color='blue', label='Actual Prices')
+if pred_price is not None:
+    ax.scatter(bedrooms, pred_price, color='red', marker='x', label='Predicted Price')
+ax.set_xlabel('Number of Bedrooms')
+ax.set_ylabel('Price')
+ax.set_title('Price vs Number of Bedrooms')
+ax.legend()
+st.pyplot(fig)
